@@ -12,8 +12,51 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
+/**
+ * @OA\Tag(
+ *     name="Paiements",
+ *     description="Opérations de paiement et transferts"
+ * )
+ */
 class PaymentController extends Controller
 {
+    /**
+     * @OA\Post(
+     *     path="/payments/initiate",
+     *     summary="Initier un paiement ou transfert",
+     *     tags={"Paiements"},
+     *     security={{"bearerAuth":{}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"amount","currency","recipient_account"},
+     *             @OA\Property(property="amount", type="number", example=5000, description="Montant du paiement"),
+     *             @OA\Property(property="currency", type="string", enum={"XOF","EUR","USD"}, example="XOF"),
+     *             @OA\Property(property="recipient_account", type="string", example="OM221772345678"),
+     *             @OA\Property(property="description", type="string", example="Paiement test")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Paiement initié avec succès",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="transaction_id", type="integer"),
+     *                 @OA\Property(property="reference", type="string"),
+     *                 @OA\Property(property="amount", type="number"),
+     *                 @OA\Property(property="currency", type="string"),
+     *                 @OA\Property(property="status", type="string"),
+     *                 @OA\Property(property="processed_at", type="string", format="date-time")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=400, description="Solde insuffisant"),
+     *     @OA\Response(response=403, description="Compte non actif"),
+     *     @OA\Response(response=422, description="Données invalides")
+     * )
+     */
     public function initiatePayment(InitiatePaymentRequest $request): JsonResponse
     {
         $user = $request->user();
@@ -117,6 +160,39 @@ class PaymentController extends Controller
         }
     }
 
+    /**
+     * @OA\Get(
+     *     path="/payments/status/{reference}",
+     *     summary="Vérifier le statut d'une transaction",
+     *     tags={"Paiements"},
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Parameter(
+     *         name="reference",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="string"),
+     *         description="Référence de la transaction"
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Statut de la transaction",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="reference", type="string"),
+     *                 @OA\Property(property="amount", type="number"),
+     *                 @OA\Property(property="currency", type="string"),
+     *                 @OA\Property(property="status", type="string", enum={"pending","completed","failed","cancelled"}),
+     *                 @OA\Property(property="type", type="string", enum={"debit","credit"}),
+     *                 @OA\Property(property="description", type="string"),
+     *                 @OA\Property(property="created_at", type="string", format="date-time"),
+     *                 @OA\Property(property="processed_at", type="string", format="date-time", nullable=true)
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Transaction non trouvée")
+     * )
+     */
     public function checkPaymentStatus(Request $request, string $reference): JsonResponse
     {
         $transaction = Transaction::where('reference', $reference)
@@ -203,6 +279,28 @@ class PaymentController extends Controller
         ]);
     }
 
+    /**
+     * @OA\Get(
+     *     path="/account/balance",
+     *     summary="Consulter le solde du compte",
+     *     tags={"Comptes"},
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Solde du compte",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="account_number", type="string"),
+     *                 @OA\Property(property="balance", type="number"),
+     *                 @OA\Property(property="currency", type="string"),
+     *                 @OA\Property(property="status", type="string")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Compte non trouvé")
+     * )
+     */
     public function getAccountBalance(Request $request): JsonResponse
     {
         $user = $request->user();

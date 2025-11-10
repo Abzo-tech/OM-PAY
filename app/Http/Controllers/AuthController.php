@@ -12,8 +12,58 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
+/**
+ * @OA\Info(
+ *     title="OM PAY API",
+ *     version="1.0.0",
+ *     description="API de paiement Orange Money pour les transferts et paiements",
+ *     @OA\Contact(
+ *         email="contact@om-pay.sn"
+ *     )
+ * )
+ *
+ * @OA\Server(
+ *     url="http://localhost:8000/api",
+ *     description="Serveur de développement"
+ * )
+ *
+ * @OA\SecurityScheme(
+ *     securityScheme="bearerAuth",
+ *     type="http",
+ *     scheme="bearer",
+ *     bearerFormat="JWT"
+ * )
+ */
 class AuthController extends Controller
 {
+    /**
+     * @OA\Post(
+     *     path="/auth/initiate-login",
+     *     summary="Initier la connexion avec numéro de téléphone",
+     *     tags={"Authentification"},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"phone"},
+     *             @OA\Property(property="phone", type="string", example="221771234567", description="Numéro de téléphone Orange Money")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="OTP envoyé avec succès",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="token", type="string"),
+     *                 @OA\Property(property="otp", type="string"),
+     *                 @OA\Property(property="expires_in", type="integer")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=422, description="Numéro invalide")
+     * )
+     */
     public function initiateLogin(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -65,6 +115,46 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * @OA\Post(
+     *     path="/auth/complete-login",
+     *     summary="Compléter la connexion avec OTP",
+     *     tags={"Authentification"},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"token","otp"},
+     *             @OA\Property(property="token", type="string", description="Token reçu lors de l'initiation"),
+     *             @OA\Property(property="otp", type="string", example="123456", description="Code OTP à 6 chiffres")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Connexion réussie",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="user", type="object",
+     *                     @OA\Property(property="id", type="integer"),
+     *                     @OA\Property(property="name", type="string"),
+     *                     @OA\Property(property="phone", type="string"),
+     *                     @OA\Property(property="email", type="string")
+     *                 ),
+     *                 @OA\Property(property="account", type="object",
+     *                     @OA\Property(property="account_number", type="string"),
+     *                     @OA\Property(property="balance", type="number"),
+     *                     @OA\Property(property="currency", type="string")
+     *                 ),
+     *                 @OA\Property(property="token", type="string"),
+     *                 @OA\Property(property="token_type", type="string", example="Bearer")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="OTP invalide ou expiré"),
+     *     security={{"bearerAuth":{}}}
+     * )
+     */
     public function completeLogin(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
