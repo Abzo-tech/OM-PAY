@@ -21,6 +21,11 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'phone',
+        'cni',
+        'is_verified',
+        'otp_code',
+        'otp_expires_at',
     ];
 
     /**
@@ -42,4 +47,14 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+
+    public function account()
+    {
+        return $this->hasOne(Account::class);
+    }
+
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
 }

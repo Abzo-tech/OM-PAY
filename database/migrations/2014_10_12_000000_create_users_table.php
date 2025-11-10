@@ -14,9 +14,14 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('email')->unique();
+            $table->string('email');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->string('phone')->nullable();
+            $table->string('cni')->nullable(); // Carte Nationale d'Identité
+            $table->boolean('is_verified')->default(false);
+            $table->string('otp_code')->nullable();
+            $table->timestamp('otp_expires_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });
