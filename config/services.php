@@ -31,4 +31,16 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'orange_money' => [
+        'api_key' => env('ORANGE_MONEY_API_KEY'),
+        'api_url' => env('ORANGE_MONEY_API_URL', 'https://api.orange-money.com'),
+        'client_id' => env('ORANGE_MONEY_CLIENT_ID'),
+        'client_secret' => env('ORANGE_MONEY_CLIENT_SECRET'),
+    ],
+
+    'orange_sms' => [
+        'api_key' => env('ORANGE_SMS_API_KEY'),
+        'api_url' => env('ORANGE_SMS_API_URL', 'https://api.orange-sms.com'),
+    ],
+
 ];

@@ -42,4 +42,19 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+
+    public function account()
+    {
+        return $this->hasOne(Account::class);
+    }
+
+    public function primaryAccount()
+    {
+        return $this->hasOne(Account::class)->where('is_primary', true);
+    }
+
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
 }
