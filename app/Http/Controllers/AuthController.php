@@ -66,29 +66,74 @@ class AuthController extends Controller
      */
     public function initiateLogin(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'phone' => 'required|string|regex:/^[0-9]{9,15}$/',
-        ]);
+        try {
+            // Log incoming request for debugging
+            \Log::info('InitiateLogin request received', [
+                'phone' => $request->phone,
+                'headers' => $request->headers->all(),
+                'method' => $request->method(),
+                'content_type' => $request->header('Content-Type'),
+                'all_data' => $request->all()
+            ]);
 
-        if ($validator->fails()) {
+            $validator = Validator::make($request->all(), [
+                'phone' => 'required|string|regex:/^[0-9]{9,15}$/',
+            ]);
+
+            if ($validator->fails()) {
+                \Log::warning('Validation failed', ['errors' => $validator->errors()]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Numéro de téléphone invalide',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $phone = $request->phone;
+            \Log::info('Processing phone', ['phone' => $phone]);
+
+            // Check database connection first
+            try {
+                \DB::connection()->getPdo();
+                \Log::info('Database connection OK');
+            } catch (\Exception $e) {
+                \Log::error('Database connection failed', ['error' => $e->getMessage()]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erreur de connexion à la base de données',
+                    'error_code' => 'DB_CONNECTION_ERROR'
+                ], 500);
+            }
+
+            // Check if user exists in Orange Money database
+            \Log::info('Checking OrangeMoney service');
+            $omService = app(OrangeMoneyService::class);
+            $omUser = $omService->checkUser($phone);
+
+            if (!$omUser) {
+                \Log::info('User not found in OrangeMoney', ['phone' => $phone]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Numéro non enregistré dans Orange Money. Veuillez créer un compte Orange Money d\'abord.',
+                    'error_code' => 'USER_NOT_FOUND'
+                ], 404);
+            }
+
+            \Log::info('User found in OrangeMoney', ['user_data' => $omUser]);
+        } catch (\Exception $e) {
+            \Log::error('Unexpected error in initiateLogin', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Numéro de téléphone invalide',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $phone = $request->phone;
-
-        // Check if user exists in Orange Money database
-        $omUser = app(OrangeMoneyService::class)->checkUser($phone);
-
-        if (!$omUser) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Numéro non enregistré dans Orange Money. Veuillez créer un compte Orange Money d\'abord.',
-                'error_code' => 'USER_NOT_FOUND'
-            ], 404);
+                'message' => 'Erreur interne du serveur',
+                'error_code' => 'INTERNAL_ERROR',
+                'debug' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
         }
 
         // Generate OTP

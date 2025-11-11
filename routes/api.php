@@ -17,6 +17,48 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Debug/Health check route (temporary)
+Route::get('/debug/health', function () {
+    try {
+        // Test database connection
+        \DB::connection()->getPdo();
+        $dbStatus = 'OK';
+
+        // Test cache
+        \Cache::put('test', 'value', 10);
+        $cacheStatus = \Cache::get('test') === 'value' ? 'OK' : 'FAILED';
+
+        // Test OrangeMoney service
+        $omService = app(\App\Services\OrangeMoneyService::class);
+        $testUser = $omService->checkUser('221771234567');
+        $omStatus = $testUser ? 'OK' : 'FAILED';
+
+        return response()->json([
+            'status' => 'OK',
+            'timestamp' => now(),
+            'checks' => [
+                'database' => $dbStatus,
+                'cache' => $cacheStatus,
+                'orange_money' => $omStatus,
+                'environment' => app()->environment(),
+                'debug_mode' => config('app.debug'),
+            ],
+            'server_info' => [
+                'php_version' => PHP_VERSION,
+                'laravel_version' => app()->version(),
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'ERROR',
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => config('app.debug') ? $e->getTraceAsString() : null
+        ], 500);
+    }
+});
+
 // Authentication routes (public)
 Route::post('/auth/initiate-login', [AuthController::class, 'initiateLogin']);
 Route::post('/auth/complete-login', [AuthController::class, 'completeLogin']);
