@@ -23,7 +23,7 @@ use Illuminate\Support\Str;
  * )
  *
  * @OA\Server(
- *     url="https://om-pay-api-2cst.onrender.com/api",
+ *     url="https://om-pay-api-1.onrender.com/api",
  *     description="Serveur de production"
  * )
  *
