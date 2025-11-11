@@ -2,7 +2,7 @@ services:
   - type: web
     name: om-pay-api
     runtime: docker
-    image: abzotech/om-pay-api:fixes-2025-11-11
+    image: abzotech/om-pay-api:debug-2025-11-11
     envVars:
       - key: APP_NAME
         value: OM-PAY-API
