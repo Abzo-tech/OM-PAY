@@ -73,25 +73,29 @@ class OrangeMoneyService
     /**
      * Check if user exists in Orange Money database
      */
-    public function checkUser(string $phone): ?array
-    {
-        // Simulate API delay
-        sleep(rand(1, 3));
+public function checkUser(string $phone): ?array
+{
+    // Ajoute cette ligne juste ici 👇
+    \Log::info('CheckUser called with phone:', ['phone' => $phone]);
 
-        // Check if phone exists in mock database
-        if (isset(self::$mockUsers[$phone])) {
-            $userData = self::$mockUsers[$phone];
+    // Simulate API delay
+    sleep(rand(1, 3));
 
-            // Simulate real-time balance updates (slight variations)
-            if ($userData['status'] === 'active') {
-                $userData['balance'] = $this->simulateBalanceUpdate($userData['balance']);
-            }
+    // Check if phone exists in mock database
+    if (isset(self::$mockUsers[$phone])) {
+        $userData = self::$mockUsers[$phone];
 
-            return $userData;
+        // Simulate real-time balance updates (slight variations)
+        if ($userData['status'] === 'active') {
+            $userData['balance'] = $this->simulateBalanceUpdate($userData['balance']);
         }
 
-        return null;
+        return $userData;
     }
+
+    return null;
+}
+
 
     /**
      * Get user account details

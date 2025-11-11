@@ -17,6 +17,54 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Ultra basic test route (no dependencies)
+Route::get('/test', function () {
+    return response()->json(['status' => 'OK', 'message' => 'Basic test works']);
+});
+
+// Even more basic test (no response helper)
+Route::get('/ping', function () {
+    return 'pong';
+});
+
+// Debug route to test if routes are working
+Route::post('/debug-test', function (Illuminate\Http\Request $request) {
+    \Log::info('Debug test route hit', [
+        'method' => $request->method(),
+        'path' => $request->path(),
+        'data' => $request->all()
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Debug route works',
+        'data' => $request->all(),
+        'timestamp' => now()->toISOString()
+    ]);
+});
+
+// Test if controller can be instantiated
+Route::get('/debug-controller', function () {
+    try {
+        $controller = app(\App\Http\Controllers\AuthController::class);
+        return response()->json([
+            'success' => true,
+            'message' => 'AuthController instantiated successfully',
+            'controller_class' => get_class($controller)
+        ]);
+    } catch (\Exception $e) {
+        \Log::error('Controller instantiation failed', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Controller instantiation failed',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+});
+
 // Debug/Health check route (temporary)
 Route::get('/debug/health', function () {
     // Force debug mode for this request
@@ -29,6 +77,13 @@ Route::get('/debug/health', function () {
     ]);
 
     try {
+        \Log::info('Testing PDO extension');
+        // Test if PDO PGSQL extension is loaded
+        if (!extension_loaded('pdo_pgsql')) {
+            throw new \Exception('PDO PostgreSQL extension not loaded');
+        }
+        \Log::info('PDO PGSQL extension loaded');
+
         \Log::info('Testing database connection');
         // Test database connection
         \DB::connection()->getPdo();

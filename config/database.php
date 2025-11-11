@@ -2,6 +2,11 @@
 
 use Illuminate\Support\Str;
 
+// Define PDO PGSQL SSL constants if not available
+if (!defined('PDO_PGSQL_SSL_MODE_REQUIRE')) {
+    define('PDO_PGSQL_SSL_MODE_REQUIRE', 1);
+}
+
 return [
 
     /*
@@ -75,7 +80,7 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'sslmode' => env('DB_SSLMODE', 'require'),
             'options' => extension_loaded('pdo_pgsql') ? array_filter([
                 PDO::PGSQL_ATTR_DISABLE_PREPARES => env('DB_DISABLE_PREPARES', false),
             ]) : [],
