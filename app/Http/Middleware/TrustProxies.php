@@ -4,6 +4,8 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Middleware\TrustProxies as Middleware;
 use Illuminate\Http\Request;
+use Closure;
+
 
 class TrustProxies extends Middleware
 {
@@ -12,8 +14,9 @@ class TrustProxies extends Middleware
      *
      * @var array<int, string>|string|null
      */
-    protected $proxies;
-
+    protected $proxies=['*'];
+    
+    
     /**
      * The headers that should be used to detect proxies.
      *
@@ -25,4 +28,17 @@ class TrustProxies extends Middleware
         Request::HEADER_X_FORWARDED_PORT |
         Request::HEADER_X_FORWARDED_PROTO |
         Request::HEADER_X_FORWARDED_AWS_ELB;
+        
+        public function handle(Request $request, Closure $next)
+   {
+       // HTTPS enforcement in production
+       if (app()->environment('production')) {
+           $request->server->set('HTTPS', 'on');
+       }
+
+
+       return $next($request);
+   }
+
+        
 }

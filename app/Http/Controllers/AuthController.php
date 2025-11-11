@@ -23,8 +23,8 @@ use Illuminate\Support\Str;
  * )
  *
  * @OA\Server(
- *     url="http://localhost:8000/api",
- *     description="Serveur de développement"
+ *     url="https://om-pay-api-2cst.onrender.com/api",
+ *     description="Serveur de production"
  * )
  *
  * @OA\SecurityScheme(

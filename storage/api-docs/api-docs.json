@@ -10,8 +10,8 @@
     },
     "servers": [
         {
-            "url": "http://localhost:8000/api",
-            "description": "Serveur de développement"
+            "url": "https://om-pay-api-2cst.onrender.com/api",
+            "description": "Serveur de production"
         }
     ],
     "paths": {
@@ -295,6 +295,116 @@
                 ]
             }
         },
+        "/transfers/initiate": {
+            "post": {
+                "tags": [
+                    "Transferts"
+                ],
+                "summary": "Initier un transfert d'argent",
+                "operationId": "41ac2725e62761b02b06bffe8d97a9ad",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "amount",
+                                    "currency",
+                                    "recipient_account"
+                                ],
+                                "properties": {
+                                    "amount": {
+                                        "description": "Montant du transfert",
+                                        "type": "number",
+                                        "example": 5000
+                                    },
+                                    "currency": {
+                                        "type": "string",
+                                        "enum": [
+                                            "XOF",
+                                            "EUR",
+                                            "USD"
+                                        ],
+                                        "example": "XOF"
+                                    },
+                                    "recipient_account": {
+                                        "type": "string",
+                                        "example": "OM221772345678"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "Transfert test"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Transfert effectué avec succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "transaction_id": {
+                                                    "type": "integer"
+                                                },
+                                                "reference": {
+                                                    "type": "string"
+                                                },
+                                                "amount": {
+                                                    "type": "number"
+                                                },
+                                                "currency": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "string"
+                                                },
+                                                "processed_at": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                },
+                                                "recipient": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Solde insuffisant"
+                    },
+                    "403": {
+                        "description": "Compte non actif"
+                    },
+                    "422": {
+                        "description": "Données invalides"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/payments/status/{reference}": {
             "get": {
                 "tags": [
@@ -453,6 +563,10 @@
         {
             "name": "Authentification",
             "description": "Authentification"
+        },
+        {
+            "name": "Transferts",
+            "description": "Transferts"
         },
         {
             "name": "Comptes",

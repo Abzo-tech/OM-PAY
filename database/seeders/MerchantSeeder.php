@@ -83,17 +83,20 @@ class MerchantSeeder extends Seeder
         ];
 
         foreach ($merchants as $merchantData) {
-            $merchant = Merchant::create(array_merge($merchantData, [
-                'qr_code' => 'MERCHANT_' . $merchantData['merchant_code'] . '_' . now()->timestamp,
-                'is_active' => true,
-                'metadata' => [
-                    'location' => 'Dakar, Sénégal',
-                    'opening_hours' => '08:00-18:00',
-                    'accepts_om_pay' => true,
-                ]
-            ]));
+            $merchant = Merchant::updateOrCreate(
+                ['merchant_code' => $merchantData['merchant_code']],
+                array_merge($merchantData, [
+                    'qr_code' => 'MERCHANT_' . $merchantData['merchant_code'] . '_' . now()->timestamp,
+                    'is_active' => true,
+                    'metadata' => [
+                        'location' => 'Dakar, Sénégal',
+                        'opening_hours' => '08:00-18:00',
+                        'accepts_om_pay' => true,
+                    ]
+                ])
+            );
 
-            $this->command->info("Created merchant: {$merchant->name} (Code: {$merchant->merchant_code})");
+            $this->command->info("Created/Updated merchant: {$merchant->name} (Code: {$merchant->merchant_code})");
         }
 
         $this->command->info('Test merchants seeded successfully!');

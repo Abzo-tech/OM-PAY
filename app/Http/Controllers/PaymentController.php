@@ -78,6 +78,137 @@ class PaymentController extends Controller
             ], 403);
         }
 
+        // Pour les paiements marchands, on valide le merchant_id au lieu du recipient_account
+        $validator = Validator::make($request->all(), [
+            'amount' => 'required|numeric|min:0.01|max:1000000',
+            'currency' => ['required', 'string', 'size:3', Rule::in(['XOF', 'EUR', 'USD'])],
+            'merchant_id' => 'required|string|exists:merchants,id',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Données invalides',
+                'errors' => $validator->errors(),
+                'error_code' => 'VALIDATION_ERROR'
+            ], 422);
+        }
+
+        if (!$account->hasSufficientBalance($request->amount)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solde insuffisant.',
+                'error_code' => 'INSUFFICIENT_BALANCE'
+            ], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Process the payment
+            $account->debit($request->amount);
+
+            // Create payment transaction
+            $transaction = Transaction::create([
+                'user_id' => $user->id,
+                'reference' => 'PAY_' . Str::upper(Str::random(12)),
+                'amount' => $request->amount,
+                'currency' => $request->currency,
+                'type' => 'debit',
+                'status' => 'completed',
+                'description' => $request->description,
+                'metadata' => json_encode([
+                    'merchant_id' => $request->merchant_id,
+                    'type' => 'payment'
+                ]),
+                'processed_at' => now(),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Paiement effectué avec succès',
+                'data' => [
+                    'transaction_id' => $transaction->id,
+                    'reference' => $transaction->reference,
+                    'amount' => $transaction->amount,
+                    'currency' => $transaction->currency,
+                    'status' => $transaction->status,
+                    'processed_at' => $transaction->processed_at,
+                    'merchant_id' => $request->merchant_id
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du traitement du paiement',
+                'error_code' => 'PAYMENT_PROCESSING_ERROR'
+            ], 500);
+        }
+    }
+
+    /**
+     * @OA\Post(
+     *     path="/transfers/initiate",
+     *     summary="Initier un transfert d'argent",
+     *     tags={"Transferts"},
+     *     security={{"bearerAuth":{}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"amount","currency","recipient_account"},
+     *             @OA\Property(property="amount", type="number", example=5000, description="Montant du transfert"),
+     *             @OA\Property(property="currency", type="string", enum={"XOF","EUR","USD"}, example="XOF"),
+     *             @OA\Property(property="recipient_account", type="string", example="OM221772345678"),
+     *             @OA\Property(property="description", type="string", example="Transfert test")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Transfert effectué avec succès",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="transaction_id", type="integer"),
+     *                 @OA\Property(property="reference", type="string"),
+     *                 @OA\Property(property="amount", type="number"),
+     *                 @OA\Property(property="currency", type="string"),
+     *                 @OA\Property(property="status", type="string"),
+     *                 @OA\Property(property="processed_at", type="string", format="date-time"),
+     *                 @OA\Property(property="recipient", type="string")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=400, description="Solde insuffisant"),
+     *     @OA\Response(response=403, description="Compte non actif"),
+     *     @OA\Response(response=422, description="Données invalides")
+     * )
+     */
+    public function initiateTransfer(InitiatePaymentRequest $request): JsonResponse
+    {
+        $user = $request->user();
+        $account = $user->account;
+
+        if (!$account) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vous devez avoir un compte principal pour effectuer des transferts. Veuillez contacter le support.',
+                'error_code' => 'ACCOUNT_REQUIRED'
+            ], 403);
+        }
+
+        if ($account->status !== 'active') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Votre compte n\'est pas actif.',
+                'error_code' => 'ACCOUNT_INACTIVE'
+            ], 403);
+        }
+
         $recipientAccount = Account::where('account_number', $request->recipient_account)->first();
 
         if (!$recipientAccount) {
@@ -138,7 +269,7 @@ class PaymentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Paiement effectué avec succès',
+                'message' => 'Transfert effectué avec succès',
                 'data' => [
                     'transaction_id' => $debitTransaction->id,
                     'reference' => $debitTransaction->reference,
@@ -154,8 +285,8 @@ class PaymentController extends Controller
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du traitement du paiement',
-                'error_code' => 'PAYMENT_PROCESSING_ERROR'
+                'message' => 'Erreur lors du traitement du transfert',
+                'error_code' => 'TRANSFER_PROCESSING_ERROR'
             ], 500);
         }
     }
