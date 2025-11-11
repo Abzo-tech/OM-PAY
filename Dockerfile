@@ -107,7 +107,7 @@ fi\n\
 php artisan l5-swagger:generate\n\
 \n\
 # Cache config for production\n\
-php artisan config:cache\n\
+php artisan config:cache 2>/dev/null || echo "Config caching failed - skipping cache"\n\
 php artisan route:cache\n\
 php artisan view:cache\n\
 \n\

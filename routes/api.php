@@ -19,20 +19,36 @@ use Illuminate\Support\Facades\Route;
 
 // Debug/Health check route (temporary)
 Route::get('/debug/health', function () {
+    // Force debug mode for this request
+    config(['app.debug' => true]);
+
+    \Log::info('Debug health check called', [
+        'environment' => app()->environment(),
+        'debug_mode' => config('app.debug'),
+        'timestamp' => now()
+    ]);
+
     try {
+        \Log::info('Testing database connection');
         // Test database connection
         \DB::connection()->getPdo();
         $dbStatus = 'OK';
+        \Log::info('Database connection OK');
 
+        \Log::info('Testing cache');
         // Test cache
         \Cache::put('test', 'value', 10);
         $cacheStatus = \Cache::get('test') === 'value' ? 'OK' : 'FAILED';
+        \Log::info('Cache test result', ['status' => $cacheStatus]);
 
+        \Log::info('Testing OrangeMoney service');
         // Test OrangeMoney service
         $omService = app(\App\Services\OrangeMoneyService::class);
         $testUser = $omService->checkUser('221771234567');
         $omStatus = $testUser ? 'OK' : 'FAILED';
+        \Log::info('OrangeMoney test result', ['status' => $omStatus, 'user_found' => $testUser ? true : false]);
 
+        \Log::info('All tests passed, returning success response');
         return response()->json([
             'status' => 'OK',
             'timestamp' => now(),
@@ -49,12 +65,20 @@ Route::get('/debug/health', function () {
             ]
         ]);
     } catch (\Exception $e) {
+        \Log::error('Exception in debug health check', [
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
         return response()->json([
             'status' => 'ERROR',
             'error' => $e->getMessage(),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
-            'trace' => config('app.debug') ? $e->getTraceAsString() : null
+            'trace' => config('app.debug') ? $e->getTraceAsString() : 'Debug disabled',
+            'debug_forced' => true
         ], 500);
     }
 });
