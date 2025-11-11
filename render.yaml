@@ -2,14 +2,14 @@ services:
   - type: web
     name: om-pay-api
     runtime: docker
-    dockerfilePath: ./Dockerfile
+    image: abzotech/om-pay-api:prod-2025-11-11
     envVars:
       - key: APP_NAME
         value: OM-PAY-API
       - key: APP_ENV
         value: production
       - key: APP_KEY
-        generateValue: true
+        value: base64:c3VwZXJzZWNyZXRrZXl0aGF0aXMyNWNoYXJzUm9uZzE=
       - key: APP_DEBUG
         value: false
       - key: APP_URL
