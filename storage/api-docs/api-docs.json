@@ -15,6 +15,198 @@
         }
     ],
     "paths": {
+        "/accounts/details": {
+            "get": {
+                "tags": [
+                    "Comptes"
+                ],
+                "summary": "Détails du compte",
+                "operationId": "72045bf0bac14b9d1f798648565ab58b",
+                "responses": {
+                    "200": {
+                        "description": "Détails du compte",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "account_number": {
+                                                    "type": "string"
+                                                },
+                                                "balance": {
+                                                    "type": "number"
+                                                },
+                                                "currency": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "string"
+                                                },
+                                                "created_at": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Compte introuvable"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/accounts/create": {
+            "post": {
+                "tags": [
+                    "Comptes"
+                ],
+                "summary": "Créer un compte OM PAY",
+                "operationId": "0843efbd6d46affc018a6cb4f7e07a25",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "phone",
+                                    "initial_balance"
+                                ],
+                                "properties": {
+                                    "phone": {
+                                        "type": "string",
+                                        "example": "221771234567"
+                                    },
+                                    "initial_balance": {
+                                        "type": "number",
+                                        "example": 10000
+                                    },
+                                    "currency": {
+                                        "type": "string",
+                                        "default": "XOF",
+                                        "enum": [
+                                            "XOF",
+                                            "EUR",
+                                            "USD"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Compte créé avec succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "account_number": {
+                                                    "type": "string"
+                                                },
+                                                "balance": {
+                                                    "type": "number"
+                                                },
+                                                "status": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Compte déjà existant"
+                    },
+                    "422": {
+                        "description": "Données invalides"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/accounts/{id}": {
+            "delete": {
+                "tags": [
+                    "Comptes"
+                ],
+                "summary": "Supprimer un compte",
+                "operationId": "c09c651218a257bd05815fc157c200ed",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Compte supprimé avec succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Suppression non autorisée"
+                    },
+                    "404": {
+                        "description": "Compte introuvable"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/auth/initiate-login": {
             "post": {
                 "tags": [
@@ -188,244 +380,320 @@
                 ]
             }
         },
-        "/payments/initiate": {
-            "post": {
-                "tags": [
-                    "Paiements"
-                ],
-                "summary": "Initier un paiement ou transfert",
-                "operationId": "b61fb11d3bca59e8d0cce3f43f4db6f1",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "required": [
-                                    "amount",
-                                    "currency",
-                                    "recipient_account"
-                                ],
-                                "properties": {
-                                    "amount": {
-                                        "description": "Montant du paiement",
-                                        "type": "number",
-                                        "example": 5000
-                                    },
-                                    "currency": {
-                                        "type": "string",
-                                        "enum": [
-                                            "XOF",
-                                            "EUR",
-                                            "USD"
-                                        ],
-                                        "example": "XOF"
-                                    },
-                                    "recipient_account": {
-                                        "type": "string",
-                                        "example": "OM221772345678"
-                                    },
-                                    "description": {
-                                        "type": "string",
-                                        "example": "Paiement test"
-                                    }
-                                },
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "201": {
-                        "description": "Paiement initié avec succès",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string"
-                                        },
-                                        "data": {
-                                            "properties": {
-                                                "transaction_id": {
-                                                    "type": "integer"
-                                                },
-                                                "reference": {
-                                                    "type": "string"
-                                                },
-                                                "amount": {
-                                                    "type": "number"
-                                                },
-                                                "currency": {
-                                                    "type": "string"
-                                                },
-                                                "status": {
-                                                    "type": "string"
-                                                },
-                                                "processed_at": {
-                                                    "type": "string",
-                                                    "format": "date-time"
-                                                }
-                                            },
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Solde insuffisant"
-                    },
-                    "403": {
-                        "description": "Compte non actif"
-                    },
-                    "422": {
-                        "description": "Données invalides"
-                    }
-                },
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ]
-            }
-        },
-        "/transfers/initiate": {
-            "post": {
-                "tags": [
-                    "Transferts"
-                ],
-                "summary": "Initier un transfert d'argent",
-                "operationId": "41ac2725e62761b02b06bffe8d97a9ad",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "required": [
-                                    "amount",
-                                    "currency",
-                                    "recipient_account"
-                                ],
-                                "properties": {
-                                    "amount": {
-                                        "description": "Montant du transfert",
-                                        "type": "number",
-                                        "example": 5000
-                                    },
-                                    "currency": {
-                                        "type": "string",
-                                        "enum": [
-                                            "XOF",
-                                            "EUR",
-                                            "USD"
-                                        ],
-                                        "example": "XOF"
-                                    },
-                                    "recipient_account": {
-                                        "type": "string",
-                                        "example": "OM221772345678"
-                                    },
-                                    "description": {
-                                        "type": "string",
-                                        "example": "Transfert test"
-                                    }
-                                },
-                                "type": "object"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "201": {
-                        "description": "Transfert effectué avec succès",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string"
-                                        },
-                                        "data": {
-                                            "properties": {
-                                                "transaction_id": {
-                                                    "type": "integer"
-                                                },
-                                                "reference": {
-                                                    "type": "string"
-                                                },
-                                                "amount": {
-                                                    "type": "number"
-                                                },
-                                                "currency": {
-                                                    "type": "string"
-                                                },
-                                                "status": {
-                                                    "type": "string"
-                                                },
-                                                "processed_at": {
-                                                    "type": "string",
-                                                    "format": "date-time"
-                                                },
-                                                "recipient": {
-                                                    "type": "string"
-                                                }
-                                            },
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Solde insuffisant"
-                    },
-                    "403": {
-                        "description": "Compte non actif"
-                    },
-                    "422": {
-                        "description": "Données invalides"
-                    }
-                },
-                "security": [
-                    {
-                        "bearerAuth": []
-                    }
-                ]
-            }
-        },
-        "/payments/status/{reference}": {
+        "/auth/user": {
             "get": {
                 "tags": [
-                    "Paiements"
+                    "Authentification"
                 ],
-                "summary": "Vérifier le statut d'une transaction",
-                "operationId": "2c78952956fa0ee242116363f53fe6b5",
+                "summary": "Informations de l'utilisateur connecté",
+                "operationId": "f2115d12097da5496ccc97ee5f23b6d5",
+                "responses": {
+                    "200": {
+                        "description": "Informations utilisateur",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "user": {
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "integer"
+                                                        },
+                                                        "name": {
+                                                            "type": "string"
+                                                        },
+                                                        "phone": {
+                                                            "type": "string"
+                                                        },
+                                                        "email": {
+                                                            "type": "string"
+                                                        },
+                                                        "is_verified": {
+                                                            "type": "boolean"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
+                                                "account": {
+                                                    "properties": {
+                                                        "account_number": {
+                                                            "type": "string"
+                                                        },
+                                                        "balance": {
+                                                            "type": "number"
+                                                        },
+                                                        "currency": {
+                                                            "type": "string"
+                                                        },
+                                                        "status": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Non authentifié"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/refresh-token": {
+            "post": {
+                "tags": [
+                    "Authentification"
+                ],
+                "summary": "Rafraîchir le token d'accès",
+                "operationId": "f63bd8623627d4788e5207877d1c582d",
+                "responses": {
+                    "200": {
+                        "description": "Token rafraîchi avec succès",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "access_token": {
+                                                    "type": "string"
+                                                },
+                                                "token_type": {
+                                                    "type": "string",
+                                                    "example": "Bearer"
+                                                },
+                                                "expires_in": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Token invalide"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "tags": [
+                    "Authentification"
+                ],
+                "summary": "Déconnexion de l'utilisateur",
+                "operationId": "0d29c740dc06d77602af8095bf4654cc",
+                "responses": {
+                    "200": {
+                        "description": "Déconnexion réussie",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Non authentifié"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/transactions": {
+            "get": {
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Lister les transactions",
+                "operationId": "0ab3c570e826b83f260d358ecb5b87e0",
                 "parameters": [
                     {
-                        "name": "reference",
-                        "in": "path",
-                        "description": "Référence de la transaction",
-                        "required": true,
+                        "name": "type",
+                        "in": "query",
                         "schema": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                                "debit",
+                                "credit",
+                                "payment",
+                                "transfer"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "pending",
+                                "completed",
+                                "failed",
+                                "cancelled"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 20,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 1,
+                            "minimum": 1
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Statut de la transaction",
+                        "description": "Liste des transactions",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "meta": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Effectuer une transaction (paiement ou transfert)",
+                "operationId": "c32749e489392d150bce9623ee0702b7",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "type",
+                                    "amount",
+                                    "currency"
+                                ],
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "payment",
+                                            "transfer"
+                                        ],
+                                        "example": "payment"
+                                    },
+                                    "merchant_id": {
+                                        "description": "Requis pour les paiements",
+                                        "type": "string",
+                                        "example": "1"
+                                    },
+                                    "recipient_account": {
+                                        "description": "Requis pour les transferts",
+                                        "type": "string",
+                                        "example": "OM221772345678"
+                                    },
+                                    "amount": {
+                                        "type": "number",
+                                        "example": 5000
+                                    },
+                                    "currency": {
+                                        "type": "string",
+                                        "enum": [
+                                            "XOF",
+                                            "EUR",
+                                            "USD"
+                                        ]
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Transaction effectuée avec succès",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -436,42 +704,17 @@
                                         },
                                         "data": {
                                             "properties": {
+                                                "transaction_id": {
+                                                    "type": "integer"
+                                                },
                                                 "reference": {
                                                     "type": "string"
                                                 },
                                                 "amount": {
                                                     "type": "number"
                                                 },
-                                                "currency": {
-                                                    "type": "string"
-                                                },
                                                 "status": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                        "pending",
-                                                        "completed",
-                                                        "failed",
-                                                        "cancelled"
-                                                    ]
-                                                },
-                                                "type": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                        "debit",
-                                                        "credit"
-                                                    ]
-                                                },
-                                                "description": {
                                                     "type": "string"
-                                                },
-                                                "created_at": {
-                                                    "type": "string",
-                                                    "format": "date-time"
-                                                },
-                                                "processed_at": {
-                                                    "type": "string",
-                                                    "format": "date-time",
-                                                    "nullable": true
                                                 }
                                             },
                                             "type": "object"
@@ -482,8 +725,11 @@
                             }
                         }
                     },
-                    "404": {
-                        "description": "Transaction non trouvée"
+                    "400": {
+                        "description": "Solde insuffisant"
+                    },
+                    "422": {
+                        "description": "Données invalides"
                     }
                 },
                 "security": [
@@ -493,16 +739,26 @@
                 ]
             }
         },
-        "/account/balance": {
-            "get": {
+        "/transactions/{id}": {
+            "delete": {
                 "tags": [
-                    "Comptes"
+                    "Transactions"
                 ],
-                "summary": "Consulter le solde du compte",
-                "operationId": "64643c246721736eadf157f5b2e5bcfe",
+                "summary": "Annuler une transaction",
+                "operationId": "142888d7dded1ad10a219aeb5c6dd1f7",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Solde du compte",
+                        "description": "Transaction annulée",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -511,22 +767,8 @@
                                             "type": "boolean",
                                             "example": true
                                         },
-                                        "data": {
-                                            "properties": {
-                                                "account_number": {
-                                                    "type": "string"
-                                                },
-                                                "balance": {
-                                                    "type": "number"
-                                                },
-                                                "currency": {
-                                                    "type": "string"
-                                                },
-                                                "status": {
-                                                    "type": "string"
-                                                }
-                                            },
-                                            "type": "object"
+                                        "message": {
+                                            "type": "string"
                                         }
                                     },
                                     "type": "object"
@@ -535,7 +777,10 @@
                         }
                     },
                     "404": {
-                        "description": "Compte non trouvé"
+                        "description": "Transaction introuvable"
+                    },
+                    "403": {
+                        "description": "Transaction non annulable"
                     }
                 },
                 "security": [
@@ -557,20 +802,16 @@
     },
     "tags": [
         {
-            "name": "Paiements",
-            "description": "Opérations de paiement et transferts"
+            "name": "Comptes",
+            "description": "Gestion des comptes utilisateur"
+        },
+        {
+            "name": "Transactions",
+            "description": "Gestion des paiements et transferts"
         },
         {
             "name": "Authentification",
             "description": "Authentification"
-        },
-        {
-            "name": "Transferts",
-            "description": "Transferts"
-        },
-        {
-            "name": "Comptes",
-            "description": "Comptes"
         }
     ]
 }

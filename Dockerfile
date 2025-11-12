@@ -1,93 +1,155 @@
-FROM php:8.3-fpm-alpine
+# Use PHP 8.3 with Apache
+FROM php:8.3-apache
 
-# Installer les dépendances système et extensions PHP
-RUN apk add --no-cache \
-   nginx \
-   libpng-dev \
-   libjpeg-turbo-dev \
-   freetype-dev \
-   libzip-dev \
-   oniguruma-dev \
-   curl-dev \
-   postgresql-dev \
-   && docker-php-ext-configure gd --with-freetype --with-jpeg \
-   && docker-php-ext-install pdo_mysql pdo_pgsql pgsql mbstring exif pcntl bcmath gd zip curl
-
-# Installer Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Créer les répertoires nécessaires
-RUN mkdir -p /var/www/html /run/nginx
-
-# Configuration Nginx de base
-RUN echo $'server {\n\
-   listen 80;\n\
-   server_name localhost;\n\
-   root /var/www/html/public;\n\
-   index index.php index.html;\n\
-   \n\
-   location / {\n\
-       try_files $uri $uri/ /index.php?$query_string;\n\
-   }\n\
-   \n\
-   location ~ \\.php$ {\n\
-       fastcgi_pass 127.0.0.1:9000;\n\
-       fastcgi_index index.php;\n\
-       fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n\
-       include fastcgi_params;\n\
-   }\n\
-   \n\
-   location ~ /\\.ht {\n\
-       deny all;\n\
-   }\n\
-}' > /etc/nginx/http.d/default.conf
-
-# Configuration PHP-FPM
-RUN echo $'[www]\n\
-user = www-data\n\
-group = www-data\n\
-listen = 127.0.0.1:9000\n\
-pm = dynamic\n\
-pm.max_children = 5\n\
-pm.start_servers = 2\n\
-pm.min_spare_servers = 1\n\
-pm.max_spare_servers = 3' > /usr/local/etc/php-fpm.d/www.conf
-
-# Copier l'application
-COPY . /var/www/html
+# Set working directory
 WORKDIR /var/www/html
 
-# Permissions
-RUN if ! getent group www-data > /dev/null 2>&1; then addgroup -g 1000 www-data; fi && \
-   if ! getent passwd www-data > /dev/null 2>&1; then adduser -D -s /bin/sh -u 1000 -G www-data www-data; fi && \
-   chown -R www-data:www-data /var/www/html /run /var/lib/nginx /var/log/nginx
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+    zip \
+    unzip \
+    nodejs \
+    npm \
+    postgresql-client \
+    libpq-dev \
+    && docker-php-ext-install pdo pdo_pgsql mbstring exif pcntl bcmath gd zip
 
-# Installer les dépendances PHP
-USER www-data
-RUN composer install --optimize-autoloader --no-dev --prefer-dist
+# Clear cache
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Revenir à root pour la configuration
-USER root
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Générer la documentation Swagger
-RUN php artisan l5-swagger:generate
+# Copy existing application directory contents
+COPY . /var/www/html
 
-# Copier la configuration de production
-COPY .env.production .env
+# Copy the correct .env file for Docker
+COPY .env.docker .env
 
-# Permissions finales
-RUN chown -R www-data:www-data /var/www/html && \
-   chmod -R 755 storage && \
-   chmod -R 775 storage/logs storage/framework storage/app
+# Copy existing application directory permissions
+COPY --chown=www-data:www-data . /var/www/html
 
+# Install PHP dependencies
+RUN composer install --no-dev --optimize-autoloader
+
+# Install Node.js dependencies and build assets
+RUN npm install && npm run build
+
+# Generate application key if .env exists
+RUN if [ -f .env ]; then php artisan key:generate; fi
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html \
+    && chmod -R 775 /var/www/html/storage \
+    && chmod -R 775 /var/www/html/bootstrap/cache
+
+# Configure Apache
+RUN echo '<VirtualHost *:80>\n\
+    DocumentRoot /var/www/html/public\n\
+    <Directory /var/www/html/public>\n\
+        AllowOverride All\n\
+        Require all granted\n\
+    </Directory>\n\
+    ErrorLog ${APACHE_LOG_DIR}/error.log\n\
+    CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
+
+# Enable Apache mod_rewrite
+RUN a2enmod rewrite
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+# Change to application directory\n\
+cd /var/www/html\n\
+\n\
+echo "Starting application initialization..."\n\
+\n\
+# Clear any existing cache first\n\
+echo "Clearing existing caches..."\n\
+php artisan config:clear\n\
+php artisan route:clear\n\
+php artisan view:clear\n\
+\n\
+# Force clear cache files with proper permissions\n\
+echo "Clearing cache files..."\n\
+rm -rf bootstrap/cache/*.php\n\
+rm -rf storage/framework/cache/data/*.php\n\
+rm -rf storage/framework/views/*.php\n\
+\n\
+echo "Creating necessary directories..."\n\
+mkdir -p bootstrap/cache\n\
+mkdir -p storage/framework/cache/data\n\
+mkdir -p storage/framework/views\n\
+mkdir -p storage/logs\n\
+\n\
+echo "Setting permissions..."\n\
+chmod -R 775 storage bootstrap/cache\n\
+chown -R www-data:www-data storage bootstrap/cache\n\
+\n\
+echo "Checking permissions..."\n\
+ls -la storage/logs/\n\
+\n\
+# Force database connection to PostgreSQL\n\
+export DB_CONNECTION=pgsql\n\
+export DB_HOST=ep-summer-credit-a4dyaduu-pooler.us-east-1.aws.neon.tech\n\
+export DB_PORT=5432\n\
+export DB_DATABASE=neondb\n\
+export DB_USERNAME=neondb_owner\n\
+export DB_PASSWORD=npg_cSa9zMRQW8DO\n\
+export DB_SSLMODE=require\n\
+export DB_CHANNEL_BINDING=require\n\
+\n\
+# Wait for database to be ready (only for PostgreSQL)\n\
+if [ -n "$DB_HOST" ] && [ "$DB_CONNECTION" = "pgsql" ]; then\n\
+    echo "Waiting for PostgreSQL database..."\n\
+    while ! pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USERNAME; do\n\
+        sleep 2\n\
+    done\n\
+    echo "PostgreSQL database is ready!"\n\
+fi\n\
+\n\
+# Run migrations\n\
+echo "Running database migrations..."\n\
+php artisan migrate --force\n\
+\n\
+# Install Passport clients if not exists\n\
+echo "Installing Passport clients..."\n\
+if ! php artisan passport:clients --no-interaction 2>/dev/null | grep -q "Laravel Personal Access Client"; then\n\
+    php artisan passport:install --no-interaction\n\
+fi\n\
+\n\
+# Run seeders in production\n\
+if [ "$APP_ENV" = "production" ]; then\n\
+    echo "Running database seeders..."\n\
+    php artisan db:seed --force\n\
+fi\n\
+\n\
+# Force regenerate Swagger docs\n\
+echo "Generating Swagger documentation..."\n\
+php artisan l5-swagger:generate\n\
+\n\
+# Cache config for production\n\
+echo "Caching configuration..."\n\
+php artisan config:cache\n\
+php artisan route:cache\n\
+php artisan view:cache\n\
+\n\
+echo "Application initialization completed. Starting Apache..."\n\
+\n\
+# Start Apache\n\
+apache2-foreground' > /usr/local/bin/start.sh
+
+RUN chmod +x /usr/local/bin/start.sh
+
+# Expose port 80
 EXPOSE 80
 
-# Script de démarrage
-RUN echo $'#!/bin/sh\n\
-php artisan config:cache && \\\n\
-php artisan route:cache && \\\n\
-php artisan view:cache && \\\n\
-nginx && \\\n\
-php-fpm -F' > /start.sh && chmod +x /start.sh
-
-CMD ["/start.sh"]
+# Start the application
+CMD ["/usr/local/bin/start.sh"]
