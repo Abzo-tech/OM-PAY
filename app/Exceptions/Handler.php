@@ -24,7 +24,28 @@ class Handler extends ExceptionHandler
     public function register(): void
     {
         $this->reportable(function (Throwable $e) {
-            //
+            $request = request();
+            $user = auth()->user();
+
+            \Log::error('Exception caught', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'request' => [
+                    'method' => $request ? $request->method() : 'N/A',
+                    'url' => $request ? $request->fullUrl() : 'N/A',
+                    'ip' => $request ? $request->ip() : 'N/A',
+                    'user_agent' => $request ? $request->userAgent() : 'N/A',
+                ],
+                'user' => $user ? [
+                    'id' => $user->id,
+                    'email' => $user->email,
+                ] : 'Not authenticated',
+                'environment' => app()->environment(),
+                'timestamp' => now()->toISOString(),
+            ]);
         });
     }
 }
+

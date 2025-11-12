@@ -15,6 +15,9 @@ class MerchantSeeder extends Seeder
     {
         $this->command->info('Seeding test merchants...');
 
+        // Truncate table to avoid duplicates in production
+        Merchant::truncate();
+
         $merchants = [
             [
                 'merchant_code' => 'MARCH001',

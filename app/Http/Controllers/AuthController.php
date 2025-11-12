@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Laravel\Passport\Client;
 
 /**
  * @OA\Info(
@@ -64,101 +65,111 @@ class AuthController extends Controller
      *     @OA\Response(response=422, description="Numéro invalide")
      * )
      */
-    public function initiateLogin(Request $request): JsonResponse
-    {
-        try {
-            // Log incoming request for debugging
-            \Log::info('InitiateLogin request received', [
-                'phone' => $request->phone,
-                'headers' => $request->headers->all(),
-                'method' => $request->method(),
-                'content_type' => $request->header('Content-Type'),
-                'all_data' => $request->all()
-            ]);
+public function initiateLogin(Request $request): JsonResponse
+{
+    \Log::info('🔥 [initiate-login] Endpoint called', [
+        'input' => $request->all(),
+        'ip' => $request->ip(),
+        'user_agent' => $request->header('User-Agent')
+    ]);
+    
 
-            $validator = Validator::make($request->all(), [
-                'phone' => 'required|string|regex:/^[0-9]{9,15}$/',
-            ]);
+    try {
+        
+        // Étape 1️⃣ : validation du numéro
+        $phone = $request->input('phone');
 
-            if ($validator->fails()) {
-                \Log::warning('Validation failed', ['errors' => $validator->errors()]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Numéro de téléphone invalide',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
+        // Handle phone as array (take first element if array)
+        if (is_array($phone)) {
+            $phone = $phone[0] ?? null;
+        }
 
-            $phone = $request->phone;
-            \Log::info('Processing phone', ['phone' => $phone]);
+        // Ensure phone is string
+        $phone = (string) $phone;
 
-            // Check database connection first
-            try {
-                \DB::connection()->getPdo();
-                \Log::info('Database connection OK');
-            } catch (\Exception $e) {
-                \Log::error('Database connection failed', ['error' => $e->getMessage()]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Erreur de connexion à la base de données',
-                    'error_code' => 'DB_CONNECTION_ERROR'
-                ], 500);
-            }
-
-            // Check if user exists in Orange Money database
-            \Log::info('Checking OrangeMoney service');
-            $omService = app(OrangeMoneyService::class);
-            $omUser = $omService->checkUser($phone);
-
-            if (!$omUser) {
-                \Log::info('User not found in OrangeMoney', ['phone' => $phone]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Numéro non enregistré dans Orange Money. Veuillez créer un compte Orange Money d\'abord.',
-                    'error_code' => 'USER_NOT_FOUND'
-                ], 404);
-            }
-
-            \Log::info('User found in OrangeMoney', ['user_data' => $omUser]);
-        } catch (\Exception $e) {
-            \Log::error('Unexpected error in initiateLogin', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
+        if (!$phone || !preg_match('/^[0-9]{9,15}$/', $phone)) {
+            \Log::warning('⚠️ [initiate-login] Invalid phone format', ['phone' => $phone]);
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur interne du serveur',
-                'error_code' => 'INTERNAL_ERROR',
-                'debug' => config('app.debug') ? $e->getMessage() : null
+                'message' => 'Numéro de téléphone invalide'
+            ], 422);
+        }
+        \Log::info('✅ [initiate-login] Phone validated', ['phone' => $phone]);
+
+        // Étape 2️⃣ : vérification utilisateur OM
+        \Log::info('🔎 [initiate-login] Checking OrangeMoneyService...');
+        $omService = app(OrangeMoneyService::class);
+
+        if (!method_exists($omService, 'checkUser')) {
+            \Log::error('❌ [initiate-login] Method checkUser missing in OrangeMoneyService');
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur interne du serveur (service manquant)'
             ], 500);
         }
 
-        // Generate OTP
+        $omUser = $omService->checkUser($phone);
+        \Log::info('📞 [initiate-login] OM User response', ['response' => $omUser]);
+
+        if (!$omUser) {
+            \Log::warning('🚫 [initiate-login] User not found in OrangeMoneyService', ['phone' => $phone]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Numéro non enregistré dans Orange Money'
+            ], 404);
+        }
+
+        // Sanitize user data to ensure proper types
+        $omUser = $this->sanitizeUserData($omUser);
+
+        // Étape 3️⃣ : génération OTP
         $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
-
-        // Store OTP in cache for 5 minutes
-        $token = Str::random(32);
-        Cache::put("otp_{$token}", [
-            'phone' => $phone,
+        $sessionToken = Str::random(32);
+        \Log::info('🔢 [initiate-login] OTP generated', [
             'otp' => $otp,
-            'user_data' => $omUser
-        ], now()->addMinutes(5));
+            'session_token' => $sessionToken
+        ]);
 
-        // In production, send SMS here
-        // For demo, we'll return the OTP in response
+        // Étape 4️⃣ : stockage OTP dans le cache
+        try {
+            Cache::put("otp_{$sessionToken}", [
+                'phone' => $phone,
+                'otp' => $otp,
+                'user_data' => $omUser
+            ], now()->addMinutes(5));
+            \Log::info('💾 [initiate-login] OTP stored in cache successfully');
+        } catch (\Exception $cacheError) {
+            \Log::error('❌ [initiate-login] Cache storage failed', ['error' => $cacheError->getMessage()]);
+        }
+
+        // Étape 5️⃣ : réponse finale
+        \Log::info('✅ [initiate-login] Process completed successfully for phone', ['phone' => $phone]);
+
         return response()->json([
             'success' => true,
             'message' => 'OTP envoyé avec succès',
             'data' => [
-                'token' => $token,
-                'otp' => $otp, // Remove this in production
-                'expires_in' => 300 // 5 minutes
+                'session_token' => $sessionToken,
+                'otp' => $otp, // à masquer plus tard
+                'expires_in' => 300
             ]
         ]);
+    } catch (\Exception $e) {
+        \Log::error('💥 [initiate-login] Unhandled exception', [
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Erreur interne du serveur',
+            'debug' => config('app.debug') ? $e->getMessage() : null
+        ], 500);
     }
+}
+
 
     /**
      * @OA\Post(
@@ -203,7 +214,7 @@ class AuthController extends Controller
     public function completeLogin(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'token' => 'required|string',
+            'session_token' => 'required|string',
             'otp' => 'required|string|size:6',
         ]);
 
@@ -215,16 +226,16 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $token = $request->token;
+        $sessionToken = $request->session_token;
 
         // Get OTP data from cache
-        $otpData = Cache::get("otp_{$token}");
+        $otpData = Cache::get("otp_{$sessionToken}");
 
         if (!$otpData) {
             return response()->json([
                 'success' => false,
-                'message' => 'Token expiré ou invalide',
-                'error_code' => 'TOKEN_EXPIRED'
+                'message' => 'Session expirée ou invalide',
+                'error_code' => 'SESSION_EXPIRED'
             ], 401);
         }
 
@@ -239,6 +250,9 @@ class AuthController extends Controller
         $phone = $otpData['phone'];
         $userData = $otpData['user_data'];
 
+        // Ensure userData is properly sanitized
+        $userData = $this->sanitizeUserData($userData);
+
         // Create or update user in database
         $user = User::where('phone', $phone)->first();
 
@@ -247,7 +261,7 @@ class AuthController extends Controller
                 'name' => $userData['name'],
                 'email' => $userData['email'],
                 'phone' => $phone,
-                'password' => Hash::make('password123'), // Default password
+                'password' => Hash::make(Str::random(16)), // Random password
                 'is_verified' => true,
             ]);
         } else {
@@ -266,35 +280,192 @@ class AuthController extends Controller
                 'balance' => $userData['balance'],
                 'currency' => $userData['currency'],
                 'status' => $userData['status'],
-                'is_primary' => true, // First account is primary
+                'is_primary' => true,
             ]
         );
 
-        // Generate API token
-        $token = $user->createToken('OM PAY API Token')->plainTextToken;
+        // Create Passport tokens
+        $accessToken = $user->createToken('OM PAY Access Token');
+        $refreshToken = $user->createToken('OM PAY Refresh Token');
 
         // Clear OTP from cache
-        Cache::forget("otp_{$token}");
+        Cache::forget("otp_{$sessionToken}");
 
         return response()->json([
             'success' => true,
             'message' => 'Connexion réussie',
+            'data' => [
+                'access_token' => $accessToken->accessToken,
+                'refresh_token' => $refreshToken->accessToken,
+                'token_type' => 'Bearer',
+                'expires_in' => 900, // 15 minutes for access token
+                'user_id' => $user->id,
+            ]
+        ]);
+    }
+
+    /**
+     * @OA\Get(
+     *     path="/auth/user",
+     *     summary="Informations de l'utilisateur connecté",
+     *     tags={"Authentification"},
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Informations utilisateur",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="user", type="object",
+     *                     @OA\Property(property="id", type="integer"),
+     *                     @OA\Property(property="name", type="string"),
+     *                     @OA\Property(property="phone", type="string"),
+     *                     @OA\Property(property="email", type="string"),
+     *                     @OA\Property(property="is_verified", type="boolean")
+     *                 ),
+     *                 @OA\Property(property="account", type="object",
+     *                     @OA\Property(property="account_number", type="string"),
+     *                     @OA\Property(property="balance", type="number"),
+     *                     @OA\Property(property="currency", type="string"),
+     *                     @OA\Property(property="status", type="string")
+     *                 )
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
+     */
+    public function getUser(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $account = $user->account;
+
+        return response()->json([
+            'success' => true,
             'data' => [
                 'user' => [
                     'id' => $user->id,
                     'name' => $user->name,
                     'phone' => $user->phone,
                     'email' => $user->email,
+                    'is_verified' => $user->is_verified,
                 ],
-                'account' => [
+                'account' => $account ? [
                     'account_number' => $account->account_number,
                     'balance' => $account->balance,
                     'currency' => $account->currency,
                     'status' => $account->status,
-                ],
-                'token' => $token,
-                'token_type' => 'Bearer',
+                ] : null,
             ]
         ]);
+    }
+
+    /**
+     * Issue OAuth2 token (Passport)
+     */
+    public function issueToken(Request $request): JsonResponse
+    {
+        $request->validate([
+            'grant_type' => 'required|string',
+            'client_id' => 'required|integer',
+            'client_secret' => 'required|string',
+            'username' => 'required_when:grant_type,password',
+            'password' => 'required_when:grant_type,password',
+            'refresh_token' => 'required_when:grant_type,refresh_token',
+        ]);
+
+        // This would normally be handled by Passport routes
+        // But we're implementing a custom endpoint for simplicity
+        return response()->json([
+            'error' => 'invalid_request',
+            'message' => 'Use the standard OAuth2 flow'
+        ], 400);
+    }
+
+    /**
+     * @OA\Post(
+     *     path="/auth/refresh-token",
+     *     summary="Rafraîchir le token d'accès",
+     *     tags={"Authentification"},
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Token rafraîchi avec succès",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="data", type="object",
+     *                 @OA\Property(property="access_token", type="string"),
+     *                 @OA\Property(property="token_type", type="string", example="Bearer"),
+     *                 @OA\Property(property="expires_in", type="integer")
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="Token invalide")
+     * )
+     */
+    public function refreshToken(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // Revoke current token
+        $request->user()->token()->revoke();
+
+        // Create new token
+        $newToken = $user->createToken('OM PAY Access Token');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Token rafraîchi avec succès',
+            'data' => [
+                'access_token' => $newToken->accessToken,
+                'token_type' => 'Bearer',
+                'expires_in' => 900, // 15 minutes
+            ]
+        ]);
+    }
+
+    /**
+     * @OA\Post(
+     *     path="/auth/logout",
+     *     summary="Déconnexion de l'utilisateur",
+     *     tags={"Authentification"},
+     *     security={{"bearerAuth":{}}},
+     *     @OA\Response(
+     *         response=200,
+     *         description="Déconnexion réussie",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string")
+     *         )
+     *     ),
+     *     @OA\Response(response=401, description="Non authentifié")
+     * )
+     */
+    public function logout(Request $request): JsonResponse
+    {
+        // Revoke current token
+        $request->user()->token()->revoke();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Déconnexion réussie'
+        ]);
+    }
+
+    /**
+     * Sanitize user data to ensure proper types for database operations and caching
+     */
+    private function sanitizeUserData(array $userData): array
+    {
+        return [
+            'name' => (string) ($userData['name'] ?? 'Unknown User'),
+            'email' => (string) ($userData['email'] ?? ''),
+            'account_number' => (string) ($userData['account_number'] ?? ''),
+            'balance' => (float) ($userData['balance'] ?? 0.00),
+            'currency' => (string) ($userData['currency'] ?? 'XOF'),
+            'status' => (string) ($userData['status'] ?? 'active'),
+            'created_at' => (string) ($userData['created_at'] ?? now()->format('Y-m-d')),
+        ];
     }
 }

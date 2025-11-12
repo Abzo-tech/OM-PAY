@@ -2,458 +2,132 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\InitiatePaymentRequest;
-use App\Models\Account;
 use App\Models\Transaction;
+use App\Models\Account;
+use App\Services\OrangeMoneyService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Log;
 
-/**
- * @OA\Tag(
- *     name="Paiements",
- *     description="Opérations de paiement et transferts"
- * )
- */
 class PaymentController extends Controller
 {
-    /**
-     * @OA\Post(
-     *     path="/payments/initiate",
-     *     summary="Initier un paiement ou transfert",
-     *     tags={"Paiements"},
-     *     security={{"bearerAuth":{}}},
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             required={"amount","currency","recipient_account"},
-     *             @OA\Property(property="amount", type="number", example=5000, description="Montant du paiement"),
-     *             @OA\Property(property="currency", type="string", enum={"XOF","EUR","USD"}, example="XOF"),
-     *             @OA\Property(property="recipient_account", type="string", example="OM221772345678"),
-     *             @OA\Property(property="description", type="string", example="Paiement test")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=201,
-     *         description="Paiement initié avec succès",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=true),
-     *             @OA\Property(property="message", type="string"),
-     *             @OA\Property(property="data", type="object",
-     *                 @OA\Property(property="transaction_id", type="integer"),
-     *                 @OA\Property(property="reference", type="string"),
-     *                 @OA\Property(property="amount", type="number"),
-     *                 @OA\Property(property="currency", type="string"),
-     *                 @OA\Property(property="status", type="string"),
-     *                 @OA\Property(property="processed_at", type="string", format="date-time")
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(response=400, description="Solde insuffisant"),
-     *     @OA\Response(response=403, description="Compte non actif"),
-     *     @OA\Response(response=422, description="Données invalides")
-     * )
-     */
-    public function initiatePayment(InitiatePaymentRequest $request): JsonResponse
+    protected $orangeMoneyService;
+
+    public function __construct(OrangeMoneyService $orangeMoneyService)
     {
-        $user = $request->user();
-        $account = $user->account;
+        $this->orangeMoneyService = $orangeMoneyService;
+    }
 
-        if (!$account) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vous devez avoir un compte principal pour effectuer des paiements. Veuillez contacter le support.',
-                'error_code' => 'ACCOUNT_REQUIRED'
-            ], 403);
-        }
-
-        if ($account->status !== 'active') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Votre compte n\'est pas actif.',
-                'error_code' => 'ACCOUNT_INACTIVE'
-            ], 403);
-        }
-
-        // Pour les paiements marchands, on valide le merchant_id au lieu du recipient_account
-        $validator = Validator::make($request->all(), [
-            'amount' => 'required|numeric|min:0.01|max:1000000',
-            'currency' => ['required', 'string', 'size:3', Rule::in(['XOF', 'EUR', 'USD'])],
-            'merchant_id' => 'required|string|exists:merchants,id',
-            'description' => 'nullable|string|max:255',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Données invalides',
-                'errors' => $validator->errors(),
-                'error_code' => 'VALIDATION_ERROR'
-            ], 422);
-        }
-
-        if (!$account->hasSufficientBalance($request->amount)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Solde insuffisant.',
-                'error_code' => 'INSUFFICIENT_BALANCE'
-            ], 400);
-        }
-
-        DB::beginTransaction();
+    /**
+     * Initiate a payment
+     */
+    public function initiatePayment(Request $request): JsonResponse
+    {
         try {
-            // Process the payment
-            $account->debit($request->amount);
-
-            // Create payment transaction
-            $transaction = Transaction::create([
-                'user_id' => $user->id,
-                'reference' => 'PAY_' . Str::upper(Str::random(12)),
-                'amount' => $request->amount,
-                'currency' => $request->currency,
-                'type' => 'debit',
-                'status' => 'completed',
-                'description' => $request->description,
-                'metadata' => json_encode([
-                    'merchant_id' => $request->merchant_id,
-                    'type' => 'payment'
-                ]),
-                'processed_at' => now(),
+            $validator = Validator::make($request->all(), [
+                'merchant_code' => 'required|string',
+                'amount' => 'required|numeric|min:100',
+                'phone' => 'required|string|regex:/^221[0-9]{9}$/',
+                'description' => 'nullable|string|max:255',
             ]);
 
-            DB::commit();
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Paiement effectué avec succès',
-                'data' => [
-                    'transaction_id' => $transaction->id,
-                    'reference' => $transaction->reference,
-                    'amount' => $transaction->amount,
-                    'currency' => $transaction->currency,
-                    'status' => $transaction->status,
-                    'processed_at' => $transaction->processed_at,
-                    'merchant_id' => $request->merchant_id
-                ]
-            ], 201);
+            $result = $this->orangeMoneyService->initiatePayment(
+                $request->merchant_code,
+                $request->amount,
+                $request->phone,
+                $request->description
+            );
+
+            return response()->json($result);
 
         } catch (\Exception $e) {
-            DB::rollBack();
+            Log::error('Payment initiation failed', [
+                'error' => $e->getMessage(),
+                'request' => $request->all()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du traitement du paiement',
-                'error_code' => 'PAYMENT_PROCESSING_ERROR'
+                'message' => 'Payment initiation failed',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * @OA\Post(
-     *     path="/transfers/initiate",
-     *     summary="Initier un transfert d'argent",
-     *     tags={"Transferts"},
-     *     security={{"bearerAuth":{}}},
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             required={"amount","currency","recipient_account"},
-     *             @OA\Property(property="amount", type="number", example=5000, description="Montant du transfert"),
-     *             @OA\Property(property="currency", type="string", enum={"XOF","EUR","USD"}, example="XOF"),
-     *             @OA\Property(property="recipient_account", type="string", example="OM221772345678"),
-     *             @OA\Property(property="description", type="string", example="Transfert test")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=201,
-     *         description="Transfert effectué avec succès",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=true),
-     *             @OA\Property(property="message", type="string"),
-     *             @OA\Property(property="data", type="object",
-     *                 @OA\Property(property="transaction_id", type="integer"),
-     *                 @OA\Property(property="reference", type="string"),
-     *                 @OA\Property(property="amount", type="number"),
-     *                 @OA\Property(property="currency", type="string"),
-     *                 @OA\Property(property="status", type="string"),
-     *                 @OA\Property(property="processed_at", type="string", format="date-time"),
-     *                 @OA\Property(property="recipient", type="string")
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(response=400, description="Solde insuffisant"),
-     *     @OA\Response(response=403, description="Compte non actif"),
-     *     @OA\Response(response=422, description="Données invalides")
-     * )
+     * Check payment status
      */
-    public function initiateTransfer(InitiatePaymentRequest $request): JsonResponse
+    public function checkPaymentStatus(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $account = $user->account;
-
-        if (!$account) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vous devez avoir un compte principal pour effectuer des transferts. Veuillez contacter le support.',
-                'error_code' => 'ACCOUNT_REQUIRED'
-            ], 403);
-        }
-
-        if ($account->status !== 'active') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Votre compte n\'est pas actif.',
-                'error_code' => 'ACCOUNT_INACTIVE'
-            ], 403);
-        }
-
-        $recipientAccount = Account::where('account_number', $request->recipient_account)->first();
-
-        if (!$recipientAccount) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Le compte destinataire n\'existe pas.',
-                'error_code' => 'RECIPIENT_NOT_FOUND'
-            ], 404);
-        }
-
-        if (!$account->hasSufficientBalance($request->amount)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Solde insuffisant.',
-                'error_code' => 'INSUFFICIENT_BALANCE'
-            ], 400);
-        }
-
-        DB::beginTransaction();
         try {
-            // Process the transfer first
-            $account->debit($request->amount);
-            $recipientAccount->credit($request->amount);
-
-            // Create debit transaction
-            $debitTransaction = Transaction::create([
-                'user_id' => $user->id,
-                'reference' => 'TXN_' . Str::upper(Str::random(12)),
-                'amount' => $request->amount,
-                'currency' => $request->currency,
-                'type' => 'debit',
-                'status' => 'completed',
-                'description' => $request->description,
-                'metadata' => json_encode([
-                    'recipient_account' => $request->recipient_account,
-                    'type' => 'transfer'
-                ]),
-                'processed_at' => now(),
+            $validator = Validator::make($request->all(), [
+                'transaction_id' => 'required|string',
             ]);
 
-            // Create credit transaction for recipient
-            $creditTransaction = Transaction::create([
-                'user_id' => $recipientAccount->user_id,
-                'reference' => 'TXN_' . Str::upper(Str::random(12)),
-                'amount' => $request->amount,
-                'currency' => $request->currency,
-                'type' => 'credit',
-                'status' => 'completed',
-                'description' => $request->description,
-                'metadata' => json_encode([
-                    'sender_account' => $account->account_number,
-                    'type' => 'transfer'
-                ]),
-                'processed_at' => now(),
-            ]);
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
 
-            DB::commit();
+            $result = $this->orangeMoneyService->checkPaymentStatus($request->transaction_id);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Transfert effectué avec succès',
-                'data' => [
-                    'transaction_id' => $debitTransaction->id,
-                    'reference' => $debitTransaction->reference,
-                    'amount' => $debitTransaction->amount,
-                    'currency' => $debitTransaction->currency,
-                    'status' => $debitTransaction->status,
-                    'processed_at' => $debitTransaction->processed_at,
-                    'recipient' => $recipientAccount->user->name
-                ]
-            ], 201);
+            return response()->json($result);
 
         } catch (\Exception $e) {
-            DB::rollBack();
+            Log::error('Payment status check failed', [
+                'error' => $e->getMessage(),
+                'transaction_id' => $request->transaction_id
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du traitement du transfert',
-                'error_code' => 'TRANSFER_PROCESSING_ERROR'
+                'message' => 'Payment status check failed',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * @OA\Get(
-     *     path="/payments/status/{reference}",
-     *     summary="Vérifier le statut d'une transaction",
-     *     tags={"Paiements"},
-     *     security={{"bearerAuth":{}}},
-     *     @OA\Parameter(
-     *         name="reference",
-     *         in="path",
-     *         required=true,
-     *         @OA\Schema(type="string"),
-     *         description="Référence de la transaction"
-     *     ),
-     *     @OA\Response(
-     *         response=200,
-     *         description="Statut de la transaction",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=true),
-     *             @OA\Property(property="data", type="object",
-     *                 @OA\Property(property="reference", type="string"),
-     *                 @OA\Property(property="amount", type="number"),
-     *                 @OA\Property(property="currency", type="string"),
-     *                 @OA\Property(property="status", type="string", enum={"pending","completed","failed","cancelled"}),
-     *                 @OA\Property(property="type", type="string", enum={"debit","credit"}),
-     *                 @OA\Property(property="description", type="string"),
-     *                 @OA\Property(property="created_at", type="string", format="date-time"),
-     *                 @OA\Property(property="processed_at", type="string", format="date-time", nullable=true)
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(response=404, description="Transaction non trouvée")
-     * )
+     * Get payment history
      */
-    public function checkPaymentStatus(Request $request, string $reference): JsonResponse
+    public function getPaymentHistory(Request $request): JsonResponse
     {
-        $transaction = Transaction::where('reference', $reference)
-            ->where('user_id', $request->user()->id)
-            ->first();
+        try {
+            $user = $request->user();
 
-        if (!$transaction) {
+            $transactions = Transaction::where('user_id', $user->id)
+                ->with('merchant')
+                ->orderBy('created_at', 'desc')
+                ->paginate(20);
+
+            return response()->json([
+                'success' => true,
+                'data' => $transactions
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Payment history retrieval failed', [
+                'error' => $e->getMessage(),
+                'user_id' => $request->user()->id ?? null
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Transaction introuvable',
-                'error_code' => 'TRANSACTION_NOT_FOUND'
-            ], 404);
+                'message' => 'Payment history retrieval failed',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'reference' => $transaction->reference,
-                'amount' => $transaction->amount,
-                'currency' => $transaction->currency,
-                'status' => $transaction->status,
-                'type' => $transaction->type,
-                'description' => $transaction->description,
-                'created_at' => $transaction->created_at,
-                'processed_at' => $transaction->processed_at
-            ]
-        ]);
-    }
-
-    public function getTransactionHistory(Request $request): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'limit' => 'nullable|integer|min:1|max:100',
-            'offset' => 'nullable|integer|min:0',
-            'status' => ['nullable', 'string', Rule::in(['pending', 'completed', 'failed', 'cancelled'])],
-            'type' => ['nullable', 'string', Rule::in(['debit', 'credit'])],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Paramètres de requête invalides',
-                'errors' => $validator->errors(),
-                'error_code' => 'INVALID_PARAMETERS'
-            ], 422);
-        }
-
-        $query = Transaction::where('user_id', $request->user()->id)
-            ->orderBy('created_at', 'desc');
-
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->has('type')) {
-            $query->where('type', $request->type);
-        }
-
-        $limit = $request->get('limit', 20);
-        $offset = $request->get('offset', 0);
-
-        $transactions = $query->skip($offset)->take($limit)->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $transactions->map(function ($transaction) {
-                return [
-                    'id' => $transaction->id,
-                    'reference' => $transaction->reference,
-                    'amount' => $transaction->amount,
-                    'currency' => $transaction->currency,
-                    'type' => $transaction->type,
-                    'status' => $transaction->status,
-                    'description' => $transaction->description,
-                    'created_at' => $transaction->created_at,
-                    'processed_at' => $transaction->processed_at
-                ];
-            }),
-            'meta' => [
-                'total' => $query->count(),
-                'limit' => $limit,
-                'offset' => $offset
-            ]
-        ]);
-    }
-
-    /**
-     * @OA\Get(
-     *     path="/account/balance",
-     *     summary="Consulter le solde du compte",
-     *     tags={"Comptes"},
-     *     security={{"bearerAuth":{}}},
-     *     @OA\Response(
-     *         response=200,
-     *         description="Solde du compte",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=true),
-     *             @OA\Property(property="data", type="object",
-     *                 @OA\Property(property="account_number", type="string"),
-     *                 @OA\Property(property="balance", type="number"),
-     *                 @OA\Property(property="currency", type="string"),
-     *                 @OA\Property(property="status", type="string")
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(response=404, description="Compte non trouvé")
-     * )
-     */
-    public function getAccountBalance(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        $account = $user->account;
-
-        if (!$account) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vous devez avoir un compte principal pour consulter votre solde. Veuillez contacter le support.',
-                'error_code' => 'ACCOUNT_REQUIRED'
-            ], 403);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'account_number' => $account->account_number,
-                'balance' => $account->balance,
-                'currency' => $account->currency,
-                'status' => $account->status,
-                'last_updated' => $account->updated_at
-            ]
-        ]);
     }
 }

@@ -1,5 +1,5 @@
-# Use PHP 8.2 with Apache
-FROM php:8.2-apache
+# Use PHP 8.3 with Apache
+FROM php:8.3-apache
 
 # Set working directory
 WORKDIR /var/www/html
@@ -69,22 +69,42 @@ RUN echo '#!/bin/bash\n\
 # Change to application directory\n\
 cd /var/www/html\n\
 \n\
+echo "Starting application initialization..."\n\
+\n\
 # Clear any existing cache first\n\
+echo "Clearing existing caches..."\n\
 php artisan config:clear\n\
 php artisan route:clear\n\
 php artisan view:clear\n\
 \n\
 # Force clear cache files with proper permissions\n\
+echo "Clearing cache files..."\n\
 rm -rf bootstrap/cache/*.php\n\
 rm -rf storage/framework/cache/data/*.php\n\
 rm -rf storage/framework/views/*.php\n\
+\n\
+echo "Creating necessary directories..."\n\
 mkdir -p bootstrap/cache\n\
 mkdir -p storage/framework/cache/data\n\
 mkdir -p storage/framework/views\n\
+mkdir -p storage/logs\n\
+\n\
+echo "Setting permissions..."\n\
 chmod -R 775 storage bootstrap/cache\n\
+chown -R www-data:www-data storage bootstrap/cache\n\
+\n\
+echo "Checking permissions..."\n\
+ls -la storage/logs/\n\
 \n\
 # Force database connection to PostgreSQL\n\
 export DB_CONNECTION=pgsql\n\
+export DB_HOST=ep-summer-credit-a4dyaduu-pooler.us-east-1.aws.neon.tech\n\
+export DB_PORT=5432\n\
+export DB_DATABASE=neondb\n\
+export DB_USERNAME=neondb_owner\n\
+export DB_PASSWORD=npg_cSa9zMRQW8DO\n\
+export DB_SSLMODE=require\n\
+export DB_CHANNEL_BINDING=require\n\
 \n\
 # Wait for database to be ready (only for PostgreSQL)\n\
 if [ -n "$DB_HOST" ] && [ "$DB_CONNECTION" = "pgsql" ]; then\n\
@@ -96,20 +116,32 @@ if [ -n "$DB_HOST" ] && [ "$DB_CONNECTION" = "pgsql" ]; then\n\
 fi\n\
 \n\
 # Run migrations\n\
+echo "Running database migrations..."\n\
 php artisan migrate --force\n\
+\n\
+# Install Passport clients if not exists\n\
+echo "Installing Passport clients..."\n\
+if ! php artisan passport:clients --no-interaction 2>/dev/null | grep -q "Laravel Personal Access Client"; then\n\
+    php artisan passport:install --no-interaction\n\
+fi\n\
 \n\
 # Run seeders in production\n\
 if [ "$APP_ENV" = "production" ]; then\n\
+    echo "Running database seeders..."\n\
     php artisan db:seed --force\n\
 fi\n\
 \n\
 # Force regenerate Swagger docs\n\
+echo "Generating Swagger documentation..."\n\
 php artisan l5-swagger:generate\n\
 \n\
 # Cache config for production\n\
+echo "Caching configuration..."\n\
 php artisan config:cache\n\
 php artisan route:cache\n\
 php artisan view:cache\n\
+\n\
+echo "Application initialization completed. Starting Apache..."\n\
 \n\
 # Start Apache\n\
 apache2-foreground' > /usr/local/bin/start.sh
